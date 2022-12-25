@@ -57,12 +57,12 @@ impl CpuBus for TestBus {
     }
 
     fn io_read8(&mut self, addr: u16) -> u8 {
-        todo!();
+        //todo!();
         0xff
     }
 
     fn io_write8(&mut self, addr: u16, data: u8) {
-        todo!();
+        //todo!();
     }
 
     fn io_read16(&mut self, addr: u16) -> u16 {
@@ -98,5 +98,7 @@ fn main() {
     let mut cpu = Cpu::new();
     let mut test_bus = TestBus::new();
 
-    cpu.tick(&mut test_bus);
+    for _i in 0.. {
+        cpu.tick(&mut test_bus);
+    }
 }

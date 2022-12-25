@@ -1,1 +1,4 @@
 /target
+/x86_rs/target
+/Cargo.lock
+/x86_rs/Cargo.lock
