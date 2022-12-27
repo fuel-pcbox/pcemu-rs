@@ -1,24 +1,20 @@
-use x86_rs::*;
 use std::fs;
+use x86_rs::*;
 
-struct TestBus
-{
+struct TestBus {
     pub lowram: Vec<u8>,
-    pub biosrom: Vec<u8>
+    pub biosrom: Vec<u8>,
 }
 
 impl CpuBus for TestBus {
     fn mem_read8(&mut self, addr: u64) -> u8 {
         if addr < 0xa0000 {
             self.lowram[addr as usize]
-        }
-        else if addr >= 0xf0000 && addr <= 0xfffff {
+        } else if addr >= 0xf0000 && addr <= 0xfffff {
             self.biosrom[(addr & 0xffff) as usize]
-        }
-        else if addr >= 0xffff0000 && addr <= 0xffffffff {
+        } else if addr >= 0xffff0000 && addr <= 0xffffffff {
             self.biosrom[(addr & 0xffff) as usize]
-        }
-        else {
+        } else {
             0xff
         }
     }
