@@ -82,7 +82,7 @@ impl CpuBus for TestBus {
 
 impl TestBus {
     pub fn new() -> TestBus {
-        let mut bios = fs::read("roms/machines/acc386/acc386.BIN").unwrap();
+        let bios = fs::read("roms/machines/acc386/acc386.BIN").unwrap();
         TestBus {
             lowram: vec![0; 0xa0000],
             biosrom: bios,
