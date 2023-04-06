@@ -624,6 +624,150 @@ impl Cpu {
                     }
                 }
             }
+            0x13 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                if let Operand::Register(rm) = opcode_params.rm {
+                    println!(
+                        "adc {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg)),
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm))
+                    );
+                    let rm = self.regs.read16(rm.into());
+                    let carry = self.regs.getflag(Flags::Carry);
+                    let reg = self.regs.read16(opcode_params.reg.into());
+                    let result = self
+                        .regs
+                        .read16(opcode_params.reg.into())
+                        .wrapping_add(rm)
+                        .wrapping_add(carry as u16);
+                    self.regs.write16(opcode_params.reg.into(), result);
+                    self.setznp16(result);
+
+                    if ((reg ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                        self.regs.setflag(Flags::Overflow, 1);
+                    } else {
+                        self.regs.setflag(Flags::Overflow, 0);
+                    }
+
+                    if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                        self.regs.setflag(Flags::Adjust, 1);
+                    } else {
+                        self.regs.setflag(Flags::Adjust, 0);
+                    }
+
+                    if (rm & 0x8000) > (result & 0x8000) {
+                        self.regs.setflag(Flags::Carry, 1);
+                    } else {
+                        self.regs.setflag(Flags::Carry, 0);
+                    }
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    println!(
+                        "adc {}, {}:{}",
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg)),
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        )
+                    );
+                    let rm = self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                    let carry = self.regs.getflag(Flags::Carry);
+                    let reg = self.regs.read16(opcode_params.reg.into());
+                    let result = self
+                        .regs
+                        .read16(opcode_params.reg.into())
+                        .wrapping_add(rm)
+                        .wrapping_add(carry as u16);
+                    self.regs.write16(opcode_params.reg.into(), result);
+                    self.setznp16(result);
+
+                    if ((reg ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                        self.regs.setflag(Flags::Overflow, 1);
+                    } else {
+                        self.regs.setflag(Flags::Overflow, 0);
+                    }
+
+                    if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                        self.regs.setflag(Flags::Adjust, 1);
+                    } else {
+                        self.regs.setflag(Flags::Adjust, 0);
+                    }
+
+                    if (rm & 0x8000) > (result & 0x8000) {
+                        self.regs.setflag(Flags::Carry, 1);
+                    } else {
+                        self.regs.setflag(Flags::Carry, 0);
+                    }
+                }
+            }
+            0x14 => {
+                let imm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                println!("adc al, {:x}", imm);
+                let carry = self.regs.getflag(Flags::Carry);
+                let reg = self.regs.read8(Reg8::AL);
+                let result = reg.wrapping_add(imm).wrapping_add(carry as u8);
+                self.regs.write8(Reg8::AL, result);
+                self.setznp8(result);
+
+                if ((reg ^ rm) & 0x80 == 0x80) && ((reg ^ result) & 0x80) == 0x80 {
+                    self.regs.setflag(Flags::Overflow, 1);
+                } else {
+                    self.regs.setflag(Flags::Overflow, 0);
+                }
+
+                if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                    self.regs.setflag(Flags::Adjust, 1);
+                } else {
+                    self.regs.setflag(Flags::Adjust, 0);
+                }
+
+                if (rm & 0x80) > (result & 0x80) {
+                    self.regs.setflag(Flags::Carry, 1);
+                } else {
+                    self.regs.setflag(Flags::Carry, 0);
+                }
+            }
+            0x15 => {
+                let imm = self.mem_read16(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(2);
+                println!("adc ax, {:x}", imm);
+                let carry = self.regs.getflag(Flags::Carry);
+                let reg = self.regs.read16(Reg8::AX);
+                let result = reg.wrapping_add(imm).wrapping_add(carry as u16);
+                self.regs.write16(Reg8::AX, result);
+                self.setznp16(result);
+
+                if ((reg ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                    self.regs.setflag(Flags::Overflow, 1);
+                } else {
+                    self.regs.setflag(Flags::Overflow, 0);
+                }
+
+                if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                    self.regs.setflag(Flags::Adjust, 1);
+                } else {
+                    self.regs.setflag(Flags::Adjust, 0);
+                }
+
+                if (rm & 0x8000) > (result & 0x8000) {
+                    self.regs.setflag(Flags::Carry, 1);
+                } else {
+                    self.regs.setflag(Flags::Carry, 0);
+                }
+            }
             0x24 => {
                 let imm = self.mem_read8(
                     bus,
