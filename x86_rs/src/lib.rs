@@ -719,19 +719,19 @@ impl Cpu {
                 self.regs.write8(Reg8::AL, result);
                 self.setznp8(result);
 
-                if ((reg ^ rm) & 0x80 == 0x80) && ((reg ^ result) & 0x80) == 0x80 {
+                if ((reg ^ imm) & 0x80 == 0x80) && ((reg ^ result) & 0x80) == 0x80 {
                     self.regs.setflag(Flags::Overflow, 1);
                 } else {
                     self.regs.setflag(Flags::Overflow, 0);
                 }
 
-                if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                if ((result ^ imm ^ reg) & 0x10) == 0x10 {
                     self.regs.setflag(Flags::Adjust, 1);
                 } else {
                     self.regs.setflag(Flags::Adjust, 0);
                 }
 
-                if (rm & 0x80) > (result & 0x80) {
+                if (imm & 0x80) > (result & 0x80) {
                     self.regs.setflag(Flags::Carry, 1);
                 } else {
                     self.regs.setflag(Flags::Carry, 0);
@@ -745,24 +745,24 @@ impl Cpu {
                 self.regs.rip = self.regs.rip.wrapping_add(2);
                 println!("adc ax, {:x}", imm);
                 let carry = self.regs.getflag(Flags::Carry);
-                let reg = self.regs.read16(Reg8::AX);
+                let reg = self.regs.read16(Reg16::AX);
                 let result = reg.wrapping_add(imm).wrapping_add(carry as u16);
-                self.regs.write16(Reg8::AX, result);
+                self.regs.write16(Reg16::AX, result);
                 self.setznp16(result);
 
-                if ((reg ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                if ((reg ^ imm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
                     self.regs.setflag(Flags::Overflow, 1);
                 } else {
                     self.regs.setflag(Flags::Overflow, 0);
                 }
 
-                if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                if ((result ^ imm ^ reg) & 0x10) == 0x10 {
                     self.regs.setflag(Flags::Adjust, 1);
                 } else {
                     self.regs.setflag(Flags::Adjust, 0);
                 }
 
-                if (rm & 0x8000) > (result & 0x8000) {
+                if (imm & 0x8000) > (result & 0x8000) {
                     self.regs.setflag(Flags::Carry, 1);
                 } else {
                     self.regs.setflag(Flags::Carry, 0);
