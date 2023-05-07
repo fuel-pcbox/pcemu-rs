@@ -368,6 +368,426 @@ impl Cpu {
         }
     }
 
+    pub fn jump_near_16<T: CpuBus>(&mut self, bus: &mut T) {
+        let offset = self.mem_read16(
+            bus,
+            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+        );
+        self.regs.rip = self.regs.rip.wrapping_add(2);
+        println!("jmp near {:x}", (self.regs.rip as u16).wrapping_add(offset));
+        self.regs.rip = (self.regs.rip as u16).wrapping_add(offset) as u64;
+    }
+
+    pub fn jump_far_16<T: CpuBus>(&mut self, bus: &mut T) {
+
+        let newip = self.mem_read16(
+            bus,
+            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+        );
+        self.regs.rip = self.regs.rip.wrapping_add(2);
+        let newcs = self.mem_read16(
+            bus,
+            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+        );
+        self.regs.rip = self.regs.rip.wrapping_add(2);
+        println!("jmp far {:x}:{:x}", newcs, newip);
+
+        //no pmode yet lol
+        self.regs.writeseg_realmode(SegReg::CS, newcs);
+        self.regs.rip = newip as u64;
+    }
+
+    pub fn cpu_alu<T: CpuBus>(&mut self, bus: &mut T, op: u8, modrm: u8, imm: Option<u64>) {
+        self.regs.rip = self.regs.rip.wrapping_add(1);
+        let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+
+        match op & 0x38 {
+            0x00 => {
+                print!("add ");
+            }
+            0x08 => {
+                print!("or ");
+            }
+            0x10 => {
+                print!("adc ");
+            }
+            0x18 => {
+                print!("sbb ");
+            }
+            0x20 => {
+                print!("and ");
+            }
+            0x28 => {
+                print!("sub ");
+            }
+            0x30 => {
+                print!("xor ");
+            }
+            0x38 => {
+                print!("cmp ");
+            }
+            _ => panic!("invalid alu op")
+        }
+
+        let mut rm: u64 = 0;
+        let mut reg: u64 = 0;
+        let mut result: u64 = 0;
+        let mut store_result = true;
+        let carry = self.regs.getflag(Flags::Carry);
+
+        match op & 7 {
+            0 => {
+                if let Operand::Register(op_rm) = opcode_params.rm {
+                    println!(
+                        "{}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(op_rm)),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg))
+                    );
+                    rm = self.regs.read8(op_rm.into()) as u64;
+                    reg = self.regs.read8(opcode_params.reg.into()) as u64;
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    println!(
+                        "{}:{}, {}",
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        ),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg)),
+                    );
+                    rm = self.mem_read8(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                    reg = self.regs.read8(opcode_params.reg.into()) as u64;
+                }
+            }
+            1 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        println!(
+                            "{}, {}",
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(op_rm)),
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(opcode_params.reg))
+                        );
+                        rm = self.regs.read32(op_rm.into()) as u64;
+                        reg = self.regs.read32(opcode_params.reg.into()) as u64;
+                    }
+                    else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        println!(
+                            "{}:{}, {}",
+                            Into::<&'static str>::into(segment),
+                            format_offset_for_disasm(
+                                Cpu::get_addr_type_from_modrm16(modrm),
+                                Cpu::get_disp_type_from_modrm(modrm),
+                                self.modrm_disp
+                            ),
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(opcode_params.reg)),
+                        );
+                        rm = self.mem_read32(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                        reg = self.regs.read32(opcode_params.reg.into()) as u64;
+                    }
+                }
+                else {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        println!(
+                            "{}, {}",
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(op_rm)),
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg))
+                        );
+                        rm = self.regs.read16(op_rm.into()) as u64;
+                        reg = self.regs.read16(opcode_params.reg.into()) as u64;
+                    }
+                    else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        println!(
+                            "{}:{}, {}",
+                            Into::<&'static str>::into(segment),
+                            format_offset_for_disasm(
+                                Cpu::get_addr_type_from_modrm16(modrm),
+                                Cpu::get_disp_type_from_modrm(modrm),
+                                self.modrm_disp
+                            ),
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg)),
+                        );
+                        rm = self.mem_read16(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                        reg = self.regs.read16(opcode_params.reg.into()) as u64;
+                    }
+                }
+            }
+            2 => {
+                if let Operand::Register(op_rm) = opcode_params.rm {
+                    println!(
+                        "{}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg)),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(op_rm))
+                    );
+                    rm = self.regs.read8(op_rm.into()) as u64;
+                    reg = self.regs.read8(opcode_params.reg.into()) as u64;
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    println!(
+                        "{}, {}:{}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg)),
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        )
+                    );
+                    rm = self.mem_read8(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                    reg = self.regs.read8(opcode_params.reg.into()) as u64;
+                }
+            }
+            3 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        println!(
+                            "{}, {}",
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(opcode_params.reg)),
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(op_rm))
+                        );
+                        rm = self.regs.read32(op_rm.into()) as u64;
+                        reg = self.regs.read32(opcode_params.reg.into()) as u64;
+                    }
+                    else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        println!(
+                            "{}, {}:{}",
+                            Into::<&'static str>::into(<u8 as Into<Reg32>>::into(opcode_params.reg)),
+                            Into::<&'static str>::into(segment),
+                            format_offset_for_disasm(
+                                Cpu::get_addr_type_from_modrm16(modrm),
+                                Cpu::get_disp_type_from_modrm(modrm),
+                                self.modrm_disp
+                            )
+                        );
+                        rm = self.mem_read32(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                        reg = self.regs.read32(opcode_params.reg.into()) as u64;
+                    }
+                }
+                else {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        println!(
+                            "{}, {}",
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg)),
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(op_rm))
+                        );
+                        rm = self.regs.read16(op_rm.into()) as u64;
+                        reg = self.regs.read16(opcode_params.reg.into()) as u64;
+                    }
+                    else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        println!(
+                            "{}, {}:{}",
+                            Into::<&'static str>::into(<u8 as Into<Reg16>>::into(opcode_params.reg)),
+                            Into::<&'static str>::into(segment),
+                            format_offset_for_disasm(
+                                Cpu::get_addr_type_from_modrm16(modrm),
+                                Cpu::get_disp_type_from_modrm(modrm),
+                                self.modrm_disp
+                            )
+                        );
+                        rm = self.mem_read16(bus, self.regs.segs[segment as usize].base + ea) as u64;
+                        reg = self.regs.read16(opcode_params.reg.into()) as u64;
+                    }
+                }
+            }
+            4 => {
+                println!("al, {:x}", imm.unwrap() as u8);
+                rm = imm.unwrap() as u8 as u64;
+                reg = self.regs.read8(Reg8::AL) as u64;
+            }
+            5 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("eax, {:x}", imm.unwrap() as u32);
+                    rm = imm.unwrap() as u32 as u64;
+                    reg = self.regs.read32(Reg32::EAX) as u64;
+                }
+                else {
+                    println!("ax, {:x}", imm.unwrap() as u16);
+                    rm = imm.unwrap() as u16 as u64;
+                    reg = self.regs.read16(Reg16::AX) as u64;
+                }
+            }
+            _ => panic!("invalid alu op")
+        }
+
+        match op & 0x38 {
+            0x00 | 0x10 => {
+                if (op & 0x38) == 0x00 {
+                    result = reg.wrapping_add(rm);
+                }
+                else {
+                    result = reg.wrapping_add(rm).wrapping_add(carry as u64);
+                }
+                match op & 7 {
+                    0 | 2 | 4 => {
+                        if ((reg ^ rm) & 0x80 == 0x80) && ((reg ^ result) & 0x80) == 0x80 {
+                            self.regs.setflag(Flags::Overflow, 1);
+                        } else {
+                            self.regs.setflag(Flags::Overflow, 0);
+                        }
+    
+                        if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                            self.regs.setflag(Flags::Adjust, 1);
+                        } else {
+                            self.regs.setflag(Flags::Adjust, 0);
+                        }
+    
+                        if (rm & 0x80) > (result & 0x80) {
+                            self.regs.setflag(Flags::Carry, 1);
+                        } else {
+                            self.regs.setflag(Flags::Carry, 0);
+                        }
+                    }
+                    1 | 3 | 5 => {
+                        if ((reg ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                            self.regs.setflag(Flags::Overflow, 1);
+                        } else {
+                            self.regs.setflag(Flags::Overflow, 0);
+                        }
+    
+                        if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                            self.regs.setflag(Flags::Adjust, 1);
+                        } else {
+                            self.regs.setflag(Flags::Adjust, 0);
+                        }
+    
+                        if (rm & 0x8000) > (result & 0x8000) {
+                            self.regs.setflag(Flags::Carry, 1);
+                        } else {
+                            self.regs.setflag(Flags::Carry, 0);
+                        }
+                    }
+                    _ => panic!("invalid alu op")
+                }
+            }
+            0x08 => {
+                result = reg | rm;
+                self.setznp64(result);
+            }
+            0x18 | 0x28 | 0x38 => {
+                if (op & 0x38) == 0x28 || (op & 0x38) == 0x38 {
+                    result = reg.wrapping_sub(rm);
+                    if (op & 0x38) == 0x38 {
+                        store_result = false;
+                    }
+                }
+                else {
+                    result = reg.wrapping_sub(rm.wrapping_add(carry as u64));
+                }
+                match op & 7 {
+                    0 | 2 | 4 => {
+                        if ((result ^ rm) & 0x80 == 0x80) && ((reg ^ result) & 0x80) == 0x80 {
+                            self.regs.setflag(Flags::Overflow, 1);
+                        } else {
+                            self.regs.setflag(Flags::Overflow, 0);
+                        }
+    
+                        if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                            self.regs.setflag(Flags::Adjust, 1);
+                        } else {
+                            self.regs.setflag(Flags::Adjust, 0);
+                        }
+    
+                        if (rm & 0x80) > (result & 0x80) {
+                            self.regs.setflag(Flags::Carry, 1);
+                        } else {
+                            self.regs.setflag(Flags::Carry, 0);
+                        }
+                    }
+                    1 | 3 | 5 => {
+                        if ((result ^ rm) & 0x8000 == 0x8000) && ((reg ^ result) & 0x8000) == 0x8000 {
+                            self.regs.setflag(Flags::Overflow, 1);
+                        } else {
+                            self.regs.setflag(Flags::Overflow, 0);
+                        }
+    
+                        if ((result ^ rm ^ reg) & 0x10) == 0x10 {
+                            self.regs.setflag(Flags::Adjust, 1);
+                        } else {
+                            self.regs.setflag(Flags::Adjust, 0);
+                        }
+    
+                        if (rm & 0x8000) > (result & 0x8000) {
+                            self.regs.setflag(Flags::Carry, 1);
+                        } else {
+                            self.regs.setflag(Flags::Carry, 0);
+                        }
+                    }
+                    _ => panic!("invalid alu op")
+                }
+            }
+            0x20 => {
+                result = reg & rm;
+                self.setznp64(result);
+            }
+            0x30 => {
+                result = reg ^ rm;
+                self.setznp64(result);
+            }
+            _ => panic!("invalid alu op")
+        }
+
+        if store_result { match op & 7 {
+            0 => {
+                if let Operand::Register(op_rm) = opcode_params.rm {
+                    self.regs.write8(op_rm.into(), result as u8);
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    self.mem_write8(bus, self.regs.segs[segment as usize].base + ea, result as u8);
+                }
+            }
+            1 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        self.regs.write32(op_rm.into(), result as u32);
+                    } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        self.mem_write32(bus, self.regs.segs[segment as usize].base + ea, result as u32);
+                    }
+                }
+                else {
+                    if let Operand::Register(op_rm) = opcode_params.rm {
+                        self.regs.write16(op_rm.into(), result as u16);
+                    } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                        self.mem_write16(bus, self.regs.segs[segment as usize].base + ea, result as u16);
+                    }
+                }
+            }
+            2 => {
+                self.regs.write8(opcode_params.reg.into(), result as u8);
+            }
+            3 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    self.regs.write32(opcode_params.reg.into(), result as u32);
+                }
+                else {
+                    self.regs.write16(opcode_params.reg.into(), result as u16);
+                }
+            }
+            4 => {
+                self.regs.write8(Reg8::AL, result as u8);
+            }
+            5 => {
+                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    self.regs.write32(Reg32::EAX, result as u32);
+                }
+                else {
+                    self.regs.write16(Reg16::AX, result as u16);
+                }
+            }
+            _ => panic!("invalid alu op")
+        }
+    }
+    }
+
     pub fn tick<T: CpuBus>(&mut self, bus: &mut T) {
         let addr = self.regs.segs[SegReg::CS as usize].base + self.regs.rip;
         let opcode = self.mem_read8(bus, addr);
@@ -380,71 +800,39 @@ impl Cpu {
         self.regs.rip = self.regs.rip.wrapping_add(1);
 
         match opcode {
-            0x0a => {
+            0x00 ..= 0x03 | 0x08 ..= 0x0b | 0x10 ..= 0x13 | 0x18 ..= 0x1b | 0x20 ..= 0x23 | 0x28 ..= 0x2b | 0x30 ..= 0x33 | 0x38 ..= 0x3b => {
                 let modrm = self.mem_read8(
                     bus,
                     self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
                 );
-                self.regs.rip = self.regs.rip.wrapping_add(1);
-                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
-                if let Operand::Register(rm) = opcode_params.rm {
-                    println!(
-                        "or {}, {}",
-                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg)),
-                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(rm))
-                    );
-                    let rm = self.regs.read8(rm.into());
-                    let result = self.regs.read8(opcode_params.reg.into()) | rm;
-                    self.regs.write8(opcode_params.reg.into(), result);
-                    self.setznp8(result);
-                } else if let Operand::Address(segment, ea) = opcode_params.rm {
-                    println!(
-                        "or {}, {}:{}",
-                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(opcode_params.reg)),
-                        Into::<&'static str>::into(segment),
-                        format_offset_for_disasm(
-                            Cpu::get_addr_type_from_modrm16(modrm),
-                            Cpu::get_disp_type_from_modrm(modrm),
-                            self.modrm_disp
-                        )
-                    );
-                    let rm = self.mem_read8(bus, self.regs.segs[segment as usize].base + ea);
-                    let result = self.regs.read8(opcode_params.reg.into()) | rm;
-                    self.regs.write8(opcode_params.reg.into(), result);
-                    self.setznp8(result);
+                self.cpu_alu(bus, opcode, modrm, None);
+            }
+            0x04 | 0x05 | 0x0c | 0x0d | 0x14 | 0x15 | 0x1c | 0x1d | 0x24 | 0x25 | 0x2c | 0x2d | 0x34 | 0x35 | 0x3c | 0x3d => {
+                let mut imm: u64 = 0;
+                if opcode & 1 == 1 {
+                    if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                    {
+                        imm = self.mem_read32(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        ) as u64;
+                        self.regs.rip = self.regs.rip.wrapping_add(4);
+                    } else {
+                        imm = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        ) as u64;
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                    }
+                    self.cpu_alu(bus, opcode, 0, Some(imm));
                 }
-            }
-            0x0c => {
-                let imm = self.mem_read8(
-                    bus,
-                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                );
-                self.regs.rip = self.regs.rip.wrapping_add(1);
-                println!("or al, {:x}", imm);
-                let result = self.regs.read8(Reg8::AL) | imm;
-                self.setznp8(result);
-            }
-            0x0d => {
-                if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                {
-                    let imm = self.mem_read32(
+                else {
+                    imm = self.mem_read8(
                         bus,
                         self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                    );
-                    self.regs.rip = self.regs.rip.wrapping_add(4);
-                    println!("or eax, {:x}", imm);
-                    let result = self.regs.read32(Reg32::EAX) | imm;
-                    self.setznp32(result);
-                } else {
-                    let imm = self.mem_read16(
-                        bus,
-                        self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                    );
-                    self.regs.rip = self.regs.rip.wrapping_add(2);
-                    println!("or ax, {:x}", imm);
-                    let result = self.regs.read16(Reg16::AX) | imm;
-                    self.setznp16(result);
+                    ) as u64;
+                    self.cpu_alu(bus, opcode, 0, Some(imm));
                 }
             }
             0x0f => {
@@ -1627,30 +2015,10 @@ impl Cpu {
                 self.io_write16(bus, port as u16, self.regs.read16(Reg16::AX));
             }
             0xe9 => {
-                let offset = self.mem_read16(
-                    bus,
-                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                );
-                self.regs.rip = self.regs.rip.wrapping_add(2);
-                println!("jmp near {:x}", (self.regs.rip as u16).wrapping_add(offset));
-                self.regs.rip = (self.regs.rip as u16).wrapping_add(offset) as u64;
+                self.jump_near_16(bus);
             }
             0xea => {
-                let newip = self.mem_read16(
-                    bus,
-                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                );
-                self.regs.rip = self.regs.rip.wrapping_add(2);
-                let newcs = self.mem_read16(
-                    bus,
-                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
-                );
-                self.regs.rip = self.regs.rip.wrapping_add(2);
-                println!("jmp far {:x}:{:x}", newcs, newip);
-
-                //no pmode yet lol
-                self.regs.writeseg_realmode(SegReg::CS, newcs);
-                self.regs.rip = newip as u64;
+                self.jump_far_16(bus);
             }
             0xf5 => {
                 println!("cmc");
