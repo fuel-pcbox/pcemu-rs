@@ -431,7 +431,7 @@ impl Cpu {
 
         let mut rm: u64 = 0;
         let mut reg: u64 = 0;
-        let mut result: u64 = 0;
+        let mut result: u64;
         let mut store_result = true;
         let carry = self.regs.getflag(Flags::Carry);
 
@@ -808,7 +808,7 @@ impl Cpu {
                 self.cpu_alu(bus, opcode, modrm, None);
             }
             0x04 | 0x05 | 0x0c | 0x0d | 0x14 | 0x15 | 0x1c | 0x1d | 0x24 | 0x25 | 0x2c | 0x2d | 0x34 | 0x35 | 0x3c | 0x3d => {
-                let mut imm: u64 = 0;
+                let mut imm: u64;
                 if opcode & 1 == 1 {
                     if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
                         || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
