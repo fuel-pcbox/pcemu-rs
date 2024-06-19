@@ -368,6 +368,12 @@ impl Cpu {
         }
     }
 
+    pub fn pop_16<T: CpuBus>(&mut self, bus: &mut T) -> u16 {
+        let result = self.mem_read16(bus, self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64);
+        self.regs.write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_add(2));
+        result
+    }
+
     pub fn jump_near_16<T: CpuBus>(&mut self, bus: &mut T) {
         let offset = self.mem_read16(
             bus,
@@ -431,7 +437,7 @@ impl Cpu {
 
         let mut rm: u64 = 0;
         let mut reg: u64 = 0;
-        let mut result: u64;
+        let result: u64;
         let mut store_result = true;
         let carry = self.regs.getflag(Flags::Carry);
 
@@ -808,7 +814,7 @@ impl Cpu {
                 self.cpu_alu(bus, opcode, modrm, None);
             }
             0x04 | 0x05 | 0x0c | 0x0d | 0x14 | 0x15 | 0x1c | 0x1d | 0x24 | 0x25 | 0x2c | 0x2d | 0x34 | 0x35 | 0x3c | 0x3d => {
-                let mut imm: u64;
+                let imm: u64;
                 if opcode & 1 == 1 {
                     if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
                         || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
@@ -963,7 +969,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Overflow) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x71 => {
@@ -978,7 +984,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Overflow) == 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x72 => {
@@ -993,7 +999,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Carry) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x73 => {
@@ -1008,7 +1014,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Carry) == 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x74 => {
@@ -1023,7 +1029,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Zero) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x75 => {
@@ -1038,7 +1044,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Zero) == 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x76 => {
@@ -1053,7 +1059,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Zero) == 1 || self.regs.getflag(Flags::Carry) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x77 => {
@@ -1068,7 +1074,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Zero) != 0 && self.regs.getflag(Flags::Carry) != 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x78 => {
@@ -1083,7 +1089,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Sign) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x79 => {
@@ -1098,7 +1104,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Sign) == 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7a => {
@@ -1113,7 +1119,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Parity) == 1 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7b => {
@@ -1128,7 +1134,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Parity) == 0 {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7c => {
@@ -1143,7 +1149,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Sign) != self.regs.getflag(Flags::Overflow) {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7d => {
@@ -1158,7 +1164,7 @@ impl Cpu {
                 );
                 if self.regs.getflag(Flags::Sign) == self.regs.getflag(Flags::Overflow) {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7e => {
@@ -1181,7 +1187,7 @@ impl Cpu {
                 }
                 if self.regs.getflag(Flags::Sign) != check_real {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x7f => {
@@ -1205,7 +1211,7 @@ impl Cpu {
 
                 if self.regs.getflag(Flags::Sign) == check_real {
                     self.regs.rip =
-                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
             0x81 => {
@@ -1287,6 +1293,36 @@ impl Cpu {
                         }
                     }
                     _ => todo!(),
+                }
+            }
+            0x8a => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Register(rm) = opcode_params.rm {
+                    self.regs.write16(reg.into(), self.regs.read16(rm.into()));
+                    println!(
+                        "mov {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg)),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(rm))
+                    );
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    let rm = self.mem_read8(bus, self.regs.segs[segment as usize].base + ea);
+                    self.regs.write8(reg.into(), rm);
+                    println!(
+                        "mov {}, {}:{}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg)),
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        )
+                    );
                 }
             }
             0x8b => {
@@ -1385,6 +1421,9 @@ impl Cpu {
                         )
                     );
                 }
+            }
+            0x90 => {
+                println!("nop");
             }
             0xa8 => {
                 let imm = self.mem_read8(
@@ -1540,6 +1579,58 @@ impl Cpu {
                 println!("mov di, {:x}", imm);
                 self.regs.write16(Reg16::DI, imm);
             }
+            0xc3 => {
+                println!("ret near");
+                self.regs.rip = self.pop_16(bus) as u64;
+            }
+            0xe0 => {
+                let offset = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                println!(
+                    "loopnz {:x}",
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16)
+                );
+                self.regs.write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_sub(1));
+                if self.regs.read16(Reg16::CX) != 0 && self.regs.getflag(Flags::Zero) == 0 {
+                    self.regs.rip =
+                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                }
+            }
+            0xe1 => {
+                let offset = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                println!(
+                    "loopz {:x}",
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16)
+                );
+                self.regs.write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_sub(1));
+                if self.regs.read16(Reg16::CX) != 0 && self.regs.getflag(Flags::Zero) == 1 {
+                    self.regs.rip =
+                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                }
+            }
+            0xe2 => {
+                let offset = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                println!(
+                    "loop {:x}",
+                    (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16)
+                );
+                self.regs.write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_sub(1));
+                if self.regs.read16(Reg16::CX) != 0 {
+                    self.regs.rip =
+                        (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
+                }
+            }
             0xe3 => {
                 let offset = self.mem_read8(
                     bus,
@@ -1665,6 +1756,90 @@ impl Cpu {
             0xfd => {
                 println!("std");
                 self.regs.setflag(Flags::Direction, 1);
+            }
+            0xff => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                println!("opcodegrpff: {:x}", modrm);
+                match modrm & 0x38 {
+                    0x00 => {
+                        let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "inc {}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                            );
+                            let result = self.regs.read16(rm.into()).wrapping_add(1);
+                            self.setznp16(result);
+                        } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "inc {}:{}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                )
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            let result = rm.wrapping_add(1);
+                            self.setznp16(result);
+                        }
+                    }
+                    0x08 => {
+                        let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "dec {}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                            );
+                            let result = self.regs.read16(rm.into()).wrapping_sub(1);
+                            self.setznp16(result);
+                        } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "dec {}:{}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                )
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            let result = rm.wrapping_sub(1);
+                            self.setznp16(result);
+                        }
+                    }
+                    0x20 => {
+                        let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "jmp {}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                            );
+                            self.regs.rip = self.regs.read16(rm.into()) as u64;
+                        } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "jmp {}:{}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                )
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            self.regs.rip = rm as u64;
+                        }
+                    }
+                    _ => todo!(),
+                }
             }
             _ => {
                 todo!();
