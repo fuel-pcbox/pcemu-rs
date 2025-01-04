@@ -71,6 +71,14 @@ pub enum Reg16 {
     BP,
     SI,
     DI,
+    R8W,
+    R9W,
+    R10W,
+    R11W,
+    R12W,
+    R13W,
+    R14W,
+    R15W,
 }
 
 impl From<u8> for Reg16 {
@@ -84,6 +92,14 @@ impl From<u8> for Reg16 {
             5 => Reg16::BP,
             6 => Reg16::SI,
             7 => Reg16::DI,
+            8 => Reg16::R8W,
+            9 => Reg16::R9W,
+            10 => Reg16::R10W,
+            11 => Reg16::R11W,
+            12 => Reg16::R12W,
+            13 => Reg16::R13W,
+            14 => Reg16::R14W,
+            15 => Reg16::R15W,
             _ => panic!(),
         }
     }
@@ -100,6 +116,14 @@ impl From<Reg16> for &'static str {
             Reg16::BP => "bp",
             Reg16::SI => "si",
             Reg16::DI => "di",
+            Reg16::R8W => "r8w",
+            Reg16::R9W => "r9w",
+            Reg16::R10W => "r10w",
+            Reg16::R11W => "r11w",
+            Reg16::R12W => "r12w",
+            Reg16::R13W => "r13w",
+            Reg16::R14W => "r14w",
+            Reg16::R15W => "r15w",
         }
     }
 }
@@ -521,6 +545,15 @@ impl Registers {
         let regval = reg as usize;
         self.segs[regval].selector = data;
         self.segs[regval].base = (data as u64) << 4;
+    }
+
+    pub fn writeseg(&mut self, reg: SegReg, data: u16) {
+        if self.cr0 & 1 == 1 {
+            todo!();
+        }
+        else {
+            self.writeseg_realmode(reg, data);
+        }
     }
 
     pub fn getflag(self, flag: Flags) -> u64 {

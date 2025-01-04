@@ -12,8 +12,7 @@ impl CpuBus for TestBus {
             self.lowram[addr as usize]
         } else if (0xf0000..=0xfffff).contains(&addr) | (0xffff0000..=0xffffffff).contains(&addr) {
             self.biosrom[(addr & 0xffff) as usize]
-        }
-        else {
+        } else {
             0xff
         }
     }
@@ -81,7 +80,7 @@ impl CpuBus for TestBus {
 
 impl TestBus {
     pub fn new() -> TestBus {
-        let bios = fs::read("roms/machines/acc386/acc386.BIN").unwrap();
+        let bios = fs::read("roms/machines/cs4031/CHIPS_1.AMI").unwrap();
         TestBus {
             lowram: vec![0; 0xa0000],
             biosrom: bios,
