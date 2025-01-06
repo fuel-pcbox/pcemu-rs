@@ -10,8 +10,8 @@ impl CpuBus for TestBus {
     fn mem_read8(&mut self, addr: u64) -> u8 {
         if addr < 0xa0000 {
             self.lowram[addr as usize]
-        } else if (0xf0000..=0xfffff).contains(&addr) | (0xffff0000..=0xffffffff).contains(&addr) {
-            self.biosrom[(addr & 0xffff) as usize]
+        } else if (0xe0000..=0xfffff).contains(&addr) | (0xfffe0000..=0xffffffff).contains(&addr) {
+            self.biosrom[(addr & 0x1ffff) as usize]
         } else {
             0xff
         }
@@ -80,7 +80,7 @@ impl CpuBus for TestBus {
 
 impl TestBus {
     pub fn new() -> TestBus {
-        let bios = fs::read("roms/machines/cs4031/CHIPS_1.AMI").unwrap();
+        let bios = fs::read("BIOS-bochs-latest").unwrap();
         TestBus {
             lowram: vec![0; 0xa0000],
             biosrom: bios,

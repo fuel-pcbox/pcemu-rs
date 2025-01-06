@@ -32,6 +32,12 @@ pub enum Use32AddrFlags {
     Bits32,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum RepStatus {
+    Repe,
+    Repne,
+}
+
 #[derive(Clone, Copy)]
 pub struct Cpu {
     pub regs: Registers,
@@ -41,6 +47,7 @@ pub struct Cpu {
     pub use_32addr_default: Use32AddrFlags,
     pub use_32addr_prefix: bool,
     pub use_32stack: Use32AddrFlags,
+    pub rep_status: Option<RepStatus>,
     modrm_disp: u64,
 }
 
@@ -54,6 +61,7 @@ impl Cpu {
             use_32addr_default: Use32AddrFlags::Bits16,
             use_32addr_prefix: false,
             use_32stack: Use32AddrFlags::Bits16,
+            rep_status: None,
             modrm_disp: 0,
         }
     }
@@ -372,12 +380,21 @@ impl Cpu {
 
     pub fn push_16<T: CpuBus>(&mut self, bus: &mut T, data: u16) {
         if self.use_32stack == Use32AddrFlags::Bits32 {
-            self.mem_write16(bus, (self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64).wrapping_sub(2), data);
+            self.mem_write16(
+                bus,
+                (self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64)
+                    .wrapping_sub(2),
+                data,
+            );
             self.regs
                 .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_sub(2));
-        }
-        else {
-            self.mem_write16(bus, (self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64).wrapping_sub(2), data);
+        } else {
+            self.mem_write16(
+                bus,
+                (self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64)
+                    .wrapping_sub(2),
+                data,
+            );
             self.regs
                 .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_sub(2));
         }
@@ -387,16 +404,15 @@ impl Cpu {
         if self.use_32stack == Use32AddrFlags::Bits32 {
             let result = self.mem_read16(
                 bus,
-                self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64
+                self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64,
             );
             self.regs
                 .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_add(2));
             result
-        }
-        else {
+        } else {
             let result = self.mem_read16(
                 bus,
-                self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64
+                self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64,
             );
             self.regs
                 .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_add(2));
@@ -406,12 +422,21 @@ impl Cpu {
 
     pub fn push_32<T: CpuBus>(&mut self, bus: &mut T, data: u32) {
         if self.use_32stack == Use32AddrFlags::Bits32 {
-            self.mem_write32(bus, (self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64).wrapping_sub(4), data);
+            self.mem_write32(
+                bus,
+                (self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64)
+                    .wrapping_sub(4),
+                data,
+            );
             self.regs
                 .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_sub(4));
-        }
-        else {
-            self.mem_write32(bus, (self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64).wrapping_sub(4), data);
+        } else {
+            self.mem_write32(
+                bus,
+                (self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64)
+                    .wrapping_sub(4),
+                data,
+            );
             self.regs
                 .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_sub(4));
         }
@@ -421,16 +446,15 @@ impl Cpu {
         if self.use_32stack == Use32AddrFlags::Bits32 {
             let result = self.mem_read32(
                 bus,
-                self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64
+                self.regs.segs[SegReg::SS as usize].base + self.regs.read32(Reg32::ESP) as u64,
             );
             self.regs
                 .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_add(4));
             result
-        }
-        else {
+        } else {
             let result = self.mem_read32(
                 bus,
-                self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64
+                self.regs.segs[SegReg::SS as usize].base + self.regs.read16(Reg16::SP) as u64,
             );
             self.regs
                 .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_add(4));
@@ -782,11 +806,10 @@ impl Cpu {
                                 && self.use_32op_prefix)
                         {
                             self.setznp32(result as u32);
-                        }
-                        else {
+                        } else {
                             self.setznp16(result as u16);
                         }
-                    },
+                    }
                     _ => panic!("invalid alu op"),
                 }
             }
@@ -878,11 +901,10 @@ impl Cpu {
                                 && self.use_32op_prefix)
                         {
                             self.setznp32(result as u32);
-                        }
-                        else {
+                        } else {
                             self.setznp16(result as u16);
                         }
-                    },
+                    }
                     _ => panic!("invalid alu op"),
                 }
             }
@@ -896,11 +918,10 @@ impl Cpu {
                                 && self.use_32op_prefix)
                         {
                             self.setznp32(result as u32);
-                        }
-                        else {
+                        } else {
                             self.setznp16(result as u16);
                         }
-                    },
+                    }
                     _ => panic!("invalid alu op"),
                 }
             }
@@ -1030,7 +1051,7 @@ impl Cpu {
             }
             0x06 => {
                 println!("push es");
-                self.push_16(bus,self.regs.segs[SegReg::ES as usize].selector);
+                self.push_16(bus, self.regs.segs[SegReg::ES as usize].selector);
             }
             0x07 => {
                 println!("pop es");
@@ -1039,7 +1060,7 @@ impl Cpu {
             }
             0x0e => {
                 println!("push cs");
-                self.push_16(bus,self.regs.segs[SegReg::CS as usize].selector);
+                self.push_16(bus, self.regs.segs[SegReg::CS as usize].selector);
             }
             0x0f => {
                 let opcode2 = self.mem_read8(
@@ -1133,12 +1154,272 @@ impl Cpu {
                             _ => todo!(),
                         }
                     }
+                    0x80 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jo {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Overflow) == 1 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x81 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jno {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Overflow) == 0 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x82 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jc {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Carry) == 1 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x83 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnc {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Carry) == 0 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x84 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jz {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Zero) == 1 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x85 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnz {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Zero) == 0 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x86 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jbe {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Zero) == 1
+                            || self.regs.getflag(Flags::Carry) == 1
+                        {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x87 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnbe {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Zero) != 0
+                            && self.regs.getflag(Flags::Carry) != 0
+                        {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x88 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "js {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Sign) == 1 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x89 => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jns {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Sign) == 0 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8a => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jp {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Parity) == 1 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8b => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnp {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Parity) == 0 {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8c => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jl {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Sign) != self.regs.getflag(Flags::Overflow) {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8d => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnl {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        if self.regs.getflag(Flags::Sign) == self.regs.getflag(Flags::Overflow) {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8e => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jle {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        let check = self.regs.getflag(Flags::Overflow) == 1
+                            || self.regs.getflag(Flags::Zero) == 1;
+                        let check_real;
+                        if check {
+                            check_real = 1;
+                        } else {
+                            check_real = 0;
+                        }
+                        if self.regs.getflag(Flags::Sign) != check_real {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
+                    0x8f => {
+                        let offset = self.mem_read16(
+                            bus,
+                            self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                        );
+                        self.regs.rip = self.regs.rip.wrapping_add(2);
+                        println!(
+                            "jnle {:x}",
+                            (self.regs.rip as u16).wrapping_add(offset as i16 as u16)
+                        );
+                        let check = self.regs.getflag(Flags::Overflow) == 1
+                            || self.regs.getflag(Flags::Zero) == 1;
+                        let check_real;
+                        if check {
+                            check_real = 1;
+                        } else {
+                            check_real = 0;
+                        }
+                        if self.regs.getflag(Flags::Sign) == check_real {
+                            self.regs.rip =
+                                (self.regs.rip as u16).wrapping_add(offset as i16 as u16) as u64;
+                        }
+                    }
                     _ => todo!(),
                 }
             }
             0x16 => {
                 println!("push ss");
-                self.push_16(bus,self.regs.segs[SegReg::SS as usize].selector);
+                self.push_16(bus, self.regs.segs[SegReg::SS as usize].selector);
             }
             0x17 => {
                 println!("pop ss");
@@ -1147,7 +1428,7 @@ impl Cpu {
             }
             0x1e => {
                 println!("push ds");
-                self.push_16(bus,self.regs.segs[SegReg::DS as usize].selector);
+                self.push_16(bus, self.regs.segs[SegReg::DS as usize].selector);
             }
             0x1f => {
                 println!("pop ds");
@@ -1176,333 +1457,340 @@ impl Cpu {
             }
             0x40 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc eax");
-                        self.regs.write32(Reg32::EAX, self.regs.read32(Reg32::EAX).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::EAX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc eax");
+                    self.regs
+                        .write32(Reg32::EAX, self.regs.read32(Reg32::EAX).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::EAX));
+                } else {
                     println!("inc ax");
-                    self.regs.write16(Reg16::AX, self.regs.read16(Reg16::AX).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::AX, self.regs.read16(Reg16::AX).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::AX));
                 }
             }
             0x41 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc ecx");
-                        self.regs.write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::ECX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc ecx");
+                    self.regs
+                        .write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::ECX));
+                } else {
                     println!("inc cx");
-                    self.regs.write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::CX));
                 }
             }
             0x42 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc edx");
-                        self.regs.write32(Reg32::EDX, self.regs.read32(Reg32::EDX).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::EDX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc edx");
+                    self.regs
+                        .write32(Reg32::EDX, self.regs.read32(Reg32::EDX).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::EDX));
+                } else {
                     println!("inc dx");
-                    self.regs.write16(Reg16::DX, self.regs.read16(Reg16::DX).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::DX, self.regs.read16(Reg16::DX).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::DX));
                 }
             }
             0x43 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc ebx");
-                        self.regs.write32(Reg32::EBX, self.regs.read32(Reg32::EBX).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::EBX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc ebx");
+                    self.regs
+                        .write32(Reg32::EBX, self.regs.read32(Reg32::EBX).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::EBX));
+                } else {
                     println!("inc bx");
-                    self.regs.write16(Reg16::BX, self.regs.read16(Reg16::BX).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::BX, self.regs.read16(Reg16::BX).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::BX));
                 }
             }
             0x44 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc esp");
-                        self.regs.write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::ESP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc esp");
+                    self.regs
+                        .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::ESP));
+                } else {
                     println!("inc sp");
-                    self.regs.write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::SP));
                 }
             }
             0x45 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc ebp");
-                        self.regs.write32(Reg32::EBP, self.regs.read32(Reg32::EBP).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::EBP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc ebp");
+                    self.regs
+                        .write32(Reg32::EBP, self.regs.read32(Reg32::EBP).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::EBP));
+                } else {
                     println!("inc bp");
-                    self.regs.write16(Reg16::BP, self.regs.read16(Reg16::BP).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::BP, self.regs.read16(Reg16::BP).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::BP));
                 }
             }
             0x46 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc esi");
-                        self.regs.write32(Reg32::ESI, self.regs.read32(Reg32::ESI).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::ESI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc esi");
+                    self.regs
+                        .write32(Reg32::ESI, self.regs.read32(Reg32::ESI).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::ESI));
+                } else {
                     println!("inc si");
-                    self.regs.write16(Reg16::SI, self.regs.read16(Reg16::SI).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::SI, self.regs.read16(Reg16::SI).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::SI));
                 }
             }
             0x47 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("inc edi");
-                        self.regs.write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_add(1));
-                        self.setznp32(self.regs.read32(Reg32::EDI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("inc edi");
+                    self.regs
+                        .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_add(1));
+                    self.setznp32(self.regs.read32(Reg32::EDI));
+                } else {
                     println!("inc di");
-                    self.regs.write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_add(1));
+                    self.regs
+                        .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_add(1));
                     self.setznp16(self.regs.read16(Reg16::DI));
                 }
             }
             0x48 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec eax");
-                        self.regs.write32(Reg32::EAX, self.regs.read32(Reg32::EAX).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::EAX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec eax");
+                    self.regs
+                        .write32(Reg32::EAX, self.regs.read32(Reg32::EAX).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::EAX));
+                } else {
                     println!("dec ax");
-                    self.regs.write16(Reg16::AX, self.regs.read16(Reg16::AX).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::AX, self.regs.read16(Reg16::AX).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::AX));
                 }
             }
             0x49 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec ecx");
-                        self.regs.write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::ECX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec ecx");
+                    self.regs
+                        .write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::ECX));
+                } else {
                     println!("dec cx");
-                    self.regs.write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::CX, self.regs.read16(Reg16::CX).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::CX));
                 }
             }
             0x4a => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec edx");
-                        self.regs.write32(Reg32::EDX, self.regs.read32(Reg32::EDX).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::EDX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec edx");
+                    self.regs
+                        .write32(Reg32::EDX, self.regs.read32(Reg32::EDX).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::EDX));
+                } else {
                     println!("dec dx");
-                    self.regs.write16(Reg16::DX, self.regs.read16(Reg16::DX).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::DX, self.regs.read16(Reg16::DX).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::DX));
                 }
             }
             0x4b => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec ebx");
-                        self.regs.write32(Reg32::EBX, self.regs.read32(Reg32::EBX).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::EBX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec ebx");
+                    self.regs
+                        .write32(Reg32::EBX, self.regs.read32(Reg32::EBX).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::EBX));
+                } else {
                     println!("dec bx");
-                    self.regs.write16(Reg16::BX, self.regs.read16(Reg16::BX).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::BX, self.regs.read16(Reg16::BX).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::BX));
                 }
             }
             0x4c => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec esp");
-                        self.regs.write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::ESP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec esp");
+                    self.regs
+                        .write32(Reg32::ESP, self.regs.read32(Reg32::ESP).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::ESP));
+                } else {
                     println!("dec sp");
-                    self.regs.write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::SP, self.regs.read16(Reg16::SP).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::SP));
                 }
             }
             0x4d => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec ebp");
-                        self.regs.write32(Reg32::EBP, self.regs.read32(Reg32::EBP).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::EBP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec ebp");
+                    self.regs
+                        .write32(Reg32::EBP, self.regs.read32(Reg32::EBP).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::EBP));
+                } else {
                     println!("dec bp");
-                    self.regs.write16(Reg16::BP, self.regs.read16(Reg16::BP).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::BP, self.regs.read16(Reg16::BP).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::BP));
                 }
             }
             0x4e => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec esi");
-                        self.regs.write32(Reg32::ESI, self.regs.read32(Reg32::ESI).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::ESI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec esi");
+                    self.regs
+                        .write32(Reg32::ESI, self.regs.read32(Reg32::ESI).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::ESI));
+                } else {
                     println!("dec si");
-                    self.regs.write16(Reg16::SI, self.regs.read16(Reg16::SI).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::SI, self.regs.read16(Reg16::SI).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::SI));
                 }
             }
             0x4f => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("dec edi");
-                        self.regs.write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_sub(1));
-                        self.setznp32(self.regs.read32(Reg32::EDI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("dec edi");
+                    self.regs
+                        .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_sub(1));
+                    self.setznp32(self.regs.read32(Reg32::EDI));
+                } else {
                     println!("dec di");
-                    self.regs.write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_sub(1));
+                    self.regs
+                        .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_sub(1));
                     self.setznp16(self.regs.read16(Reg16::DI));
                 }
             }
             0x50 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push eax");
-                        self.push_32(bus, self.regs.read32(Reg32::EAX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push eax");
+                    self.push_32(bus, self.regs.read32(Reg32::EAX));
+                } else {
                     println!("push ax");
                     self.push_16(bus, self.regs.read16(Reg16::AX));
                 }
             }
             0x51 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push ecx");
-                        self.push_32(bus, self.regs.read32(Reg32::ECX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push ecx");
+                    self.push_32(bus, self.regs.read32(Reg32::ECX));
+                } else {
                     println!("push cx");
                     self.push_16(bus, self.regs.read16(Reg16::CX));
                 }
             }
             0x52 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push edx");
-                        self.push_32(bus, self.regs.read32(Reg32::EDX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push edx");
+                    self.push_32(bus, self.regs.read32(Reg32::EDX));
+                } else {
                     println!("push dx");
                     self.push_16(bus, self.regs.read16(Reg16::DX));
                 }
             }
             0x53 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push ebx");
-                        self.push_32(bus, self.regs.read32(Reg32::EBX));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push ebx");
+                    self.push_32(bus, self.regs.read32(Reg32::EBX));
+                } else {
                     println!("push bx");
                     self.push_16(bus, self.regs.read16(Reg16::BX));
                 }
             }
             0x54 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push esp");
-                        self.push_32(bus, self.regs.read32(Reg32::ESP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push esp");
+                    self.push_32(bus, self.regs.read32(Reg32::ESP));
+                } else {
                     println!("push sp");
                     self.push_16(bus, self.regs.read16(Reg16::SP));
                 }
             }
             0x55 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push ebp");
-                        self.push_32(bus, self.regs.read32(Reg32::EBP));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push ebp");
+                    self.push_32(bus, self.regs.read32(Reg32::EBP));
+                } else {
                     println!("push bp");
                     self.push_16(bus, self.regs.read16(Reg16::BP));
                 }
             }
             0x56 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push esi");
-                        self.push_32(bus, self.regs.read32(Reg32::ESI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push esi");
+                    self.push_32(bus, self.regs.read32(Reg32::ESI));
+                } else {
                     println!("push si");
                     self.push_16(bus, self.regs.read16(Reg16::SI));
                 }
             }
             0x57 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("push edi");
-                        self.push_32(bus, self.regs.read32(Reg32::EDI));
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("push edi");
+                    self.push_32(bus, self.regs.read32(Reg32::EDI));
+                } else {
                     println!("push di");
                     self.push_16(bus, self.regs.read16(Reg16::DI));
                 }
             }
             0x58 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop eax");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::EAX, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop eax");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::EAX, popped);
+                } else {
                     println!("pop ax");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::AX, popped);
@@ -1510,13 +1798,12 @@ impl Cpu {
             }
             0x59 => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop ecx");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::ECX, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop ecx");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::ECX, popped);
+                } else {
                     println!("pop cx");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::CX, popped);
@@ -1524,13 +1811,12 @@ impl Cpu {
             }
             0x5a => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop edx");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::EDX, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop edx");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::EDX, popped);
+                } else {
                     println!("pop dx");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::DX, popped);
@@ -1538,13 +1824,12 @@ impl Cpu {
             }
             0x5b => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop ebx");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::EBX, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop ebx");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::EBX, popped);
+                } else {
                     println!("pop bx");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::BX, popped);
@@ -1552,13 +1837,12 @@ impl Cpu {
             }
             0x5c => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop esp");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::ESP, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop esp");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::ESP, popped);
+                } else {
                     println!("pop sp");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::SP, popped);
@@ -1566,13 +1850,12 @@ impl Cpu {
             }
             0x5d => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop ebp");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::EBP, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop ebp");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::EBP, popped);
+                } else {
                     println!("pop bp");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::BP, popped);
@@ -1580,13 +1863,12 @@ impl Cpu {
             }
             0x5e => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop esi");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::ESI, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop esi");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::ESI, popped);
+                } else {
                     println!("pop si");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::SI, popped);
@@ -1594,13 +1876,12 @@ impl Cpu {
             }
             0x5f => {
                 if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
-                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
-                    {
-                        println!("pop edi");
-                        let popped = self.pop_32(bus);
-                        self.regs.write32(Reg32::EDI, popped);
-                    }
-                else {
+                    || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                {
+                    println!("pop edi");
+                    let popped = self.pop_32(bus);
+                    self.regs.write32(Reg32::EDI, popped);
+                } else {
                     println!("pop di");
                     let popped = self.pop_16(bus);
                     self.regs.write16(Reg16::DI, popped);
@@ -1883,6 +2164,87 @@ impl Cpu {
                         (self.regs.rip as u16).wrapping_add(offset as i8 as i16 as u16) as u64;
                 }
             }
+            0x80 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let imm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                match modrm & 0x38 {
+                    0x38 => {
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "cmp {}, {:x}",
+                                Into::<&'static str>::into(<u8 as Into<Reg8>>::into(rm)),
+                                imm
+                            );
+                            let result = self.regs.read8(rm.into()).wrapping_sub(imm);
+                            self.setznp8(result);
+
+                            if ((result ^ imm) & (result ^ self.regs.read8(rm.into())) & 0x80)
+                                == 0x80
+                            {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ self.regs.read8(rm.into()) ^ imm) & 0x10) == 0x10 {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if imm > result {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                        if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "cmp {}:{}, {:x}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                ),
+                                imm
+                            );
+                            let rm =
+                                self.mem_read8(bus, self.regs.segs[segment as usize].base + ea);
+                            let result = rm.wrapping_sub(imm);
+                            self.setznp8(result);
+
+                            if ((result ^ imm) & (result ^ rm) & 0x80) == 0x80 {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ rm ^ imm) & 0x10) == 0x10 {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if imm > result {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                    }
+                    _ => todo!(),
+                }
+            }
             0x81 => {
                 let modrm = self.mem_read8(
                     bus,
@@ -1894,7 +2256,7 @@ impl Cpu {
                     bus,
                     self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
                 );
-                self.regs.rip = self.regs.rip.wrapping_add(1);
+                self.regs.rip = self.regs.rip.wrapping_add(2);
                 match modrm & 0x38 {
                     0x38 => {
                         if let Operand::Register(rm) = opcode_params.rm {
@@ -1964,6 +2326,288 @@ impl Cpu {
                     _ => todo!(),
                 }
             }
+            0x83 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let imm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                match modrm & 0x38 {
+                    0x00 => {
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "add {}, {:x}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                                imm
+                            );
+                            let result = self.regs.read16(rm.into()).wrapping_add(imm as u16);
+                            self.setznp16(result);
+
+                            if ((imm as u16 ^ self.regs.read16(rm.into())) & 0x8000 == 0x8000)
+                                && ((imm as u16 ^ result) & 0x8000) == 0x8000
+                            {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ self.regs.read16(rm.into()) ^ imm as u16) & 0x10) == 0x10
+                            {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if (self.regs.read16(rm.into()) & 0x8000) > (result & 0x8000) {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                        if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "add {}:{}, {:x}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                ),
+                                imm
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            let result = rm.wrapping_add(imm as u16);
+                            self.setznp16(result);
+
+                            if ((imm as u16 ^ rm) & 0x8000 == 0x8000)
+                                && ((imm as u16 ^ result) & 0x8000) == 0x8000
+                            {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ rm ^ imm as u16) & 0x10) == 0x10 {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if (rm & 0x8000) > (result & 0x8000) {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                    }
+                    0x38 => {
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "cmp {}, {:x}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                                imm
+                            );
+                            let result = self.regs.read16(rm.into()).wrapping_sub(imm as u16);
+                            self.setznp16(result);
+
+                            if ((result ^ imm as u16)
+                                & (result ^ self.regs.read16(rm.into()))
+                                & 0x8000)
+                                == 0x8000
+                            {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ self.regs.read16(rm.into()) ^ imm as u16) & 0x10) == 0x10
+                            {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if imm as u16 > result {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                        if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "cmp {}:{}, {:x}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                ),
+                                imm
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            let result = rm.wrapping_sub(imm as u16);
+                            self.setznp16(result);
+
+                            if ((result ^ imm as u16) & (result ^ rm) & 0x8000) == 0x8000 {
+                                self.regs.setflag(Flags::Overflow, 1);
+                            } else {
+                                self.regs.setflag(Flags::Overflow, 0);
+                            }
+
+                            if ((result ^ rm ^ imm as u16) & 0x10) == 0x10 {
+                                self.regs.setflag(Flags::Adjust, 1);
+                            } else {
+                                self.regs.setflag(Flags::Adjust, 0);
+                            }
+
+                            if imm as u16 > result {
+                                self.regs.setflag(Flags::Carry, 1);
+                            } else {
+                                self.regs.setflag(Flags::Carry, 0);
+                            }
+                        }
+                    }
+                    _ => todo!(),
+                }
+            }
+            0x84 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Register(rm) = opcode_params.rm {
+                    let result = self.regs.read8(reg.into()) & self.regs.read8(rm.into());
+                    println!(
+                        "test {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(rm)),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg))
+                    );
+                    self.setznp8(result);
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    let result = self.regs.read8(reg.into())
+                        & self.mem_read8(bus, self.regs.segs[segment as usize].base + ea);
+                    println!(
+                        "test {}:{}, {}",
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        ),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg))
+                    );
+                    self.setznp8(result);
+                }
+            }
+            0x85 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Register(rm) = opcode_params.rm {
+                    let result = self.regs.read16(reg.into()) & self.regs.read16(rm.into());
+                    println!(
+                        "test {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(reg))
+                    );
+                    self.setznp16(result);
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    let result = self.regs.read16(reg.into())
+                        & self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                    println!(
+                        "test {}:{}, {}",
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        ),
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(reg))
+                    );
+                    self.setznp16(result);
+                }
+            }
+            0x88 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Register(rm) = opcode_params.rm {
+                    self.regs.write8(rm.into(), self.regs.read8(reg.into()));
+                    println!(
+                        "mov {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(rm)),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg))
+                    );
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    self.mem_write8(
+                        bus,
+                        self.regs.segs[segment as usize].base + ea,
+                        self.regs.read8(reg.into()),
+                    );
+                    println!(
+                        "mov {}:{}, {}",
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        ),
+                        Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg))
+                    );
+                }
+            }
+            0x89 => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Register(rm) = opcode_params.rm {
+                    self.regs.write16(rm.into(), self.regs.read16(reg.into()));
+                    println!(
+                        "mov {}, {}",
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(reg))
+                    );
+                } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                    self.mem_write16(
+                        bus,
+                        self.regs.segs[segment as usize].base + ea,
+                        self.regs.read16(reg.into()),
+                    );
+                    println!(
+                        "mov {}:{}, {}",
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        ),
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(reg))
+                    );
+                }
+            }
             0x8a => {
                 let modrm = self.mem_read8(
                     bus,
@@ -1973,7 +2617,7 @@ impl Cpu {
                 let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
                 let reg = opcode_params.reg;
                 if let Operand::Register(rm) = opcode_params.rm {
-                    self.regs.write16(reg.into(), self.regs.read16(rm.into()));
+                    self.regs.write8(reg.into(), self.regs.read8(rm.into()));
                     println!(
                         "mov {}, {}",
                         Into::<&'static str>::into(<u8 as Into<Reg8>>::into(reg)),
@@ -2060,6 +2704,30 @@ impl Cpu {
                     );
                 }
             }
+            0x8d => {
+                let modrm = self.mem_read8(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(1);
+                let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                let reg = opcode_params.reg;
+                if let Operand::Address(segment, ea) = opcode_params.rm {
+                    self.regs.write16(reg.into(), ea as u16);
+                    println!(
+                        "lea {}, {}:{}",
+                        Into::<&'static str>::into(<u8 as Into<Reg16>>::into(reg)),
+                        Into::<&'static str>::into(segment),
+                        format_offset_for_disasm(
+                            Cpu::get_addr_type_from_modrm16(modrm),
+                            Cpu::get_disp_type_from_modrm(modrm),
+                            self.modrm_disp
+                        )
+                    );
+                } else {
+                    panic!("ILLEGAL LEA OPCODE");
+                }
+            }
             0x8e => {
                 let modrm = self.mem_read8(
                     bus,
@@ -2103,6 +2771,144 @@ impl Cpu {
                 println!("test al, {:x}", imm);
                 let result = self.regs.read8(Reg8::AL) & imm;
                 self.setznp8(result);
+            }
+            0xaa => {
+                println!("stosb");
+                let mut segment = SegReg::ES;
+                if let Some(segmentoverride) = self.segment_override {
+                    segment = segmentoverride;
+                }
+
+                if (self.use_32addr_default == Use32AddrFlags::Bits32 && !self.use_32addr_prefix)
+                    || (self.use_32addr_default == Use32AddrFlags::Bits16 && self.use_32addr_prefix)
+                {
+                    self.mem_write8(
+                        bus,
+                        self.regs.segs[segment as usize].base + self.regs.read32(Reg32::EDI) as u64,
+                        self.regs.read8(Reg8::AL),
+                    );
+                    if self.regs.getflag(Flags::Direction) == 0 {
+                        self.regs
+                            .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_add(1));
+                    } else {
+                        self.regs
+                            .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_sub(1));
+                    }
+                } else {
+                    self.mem_write8(
+                        bus,
+                        self.regs.segs[segment as usize].base + self.regs.read16(Reg16::DI) as u64,
+                        self.regs.read8(Reg8::AL),
+                    );
+                    if self.regs.getflag(Flags::Direction) == 0 {
+                        self.regs
+                            .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_add(1));
+                    } else {
+                        self.regs
+                            .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_sub(1));
+                    }
+                }
+                if self.rep_status != None {
+                    self.regs
+                        .write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_sub(1));
+                    if self.regs.read32(Reg32::ECX) != 0 {
+                        self.regs.rip = self.regs.rip.wrapping_sub(2);
+                        if self.use_32addr_prefix {
+                            self.regs.rip = self.regs.rip.wrapping_sub(1);
+                        }
+                    }
+                }
+            }
+            0xab => {
+                let mut segment = SegReg::ES;
+                if let Some(segmentoverride) = self.segment_override {
+                    segment = segmentoverride;
+                }
+
+                if (self.use_32addr_default == Use32AddrFlags::Bits32 && !self.use_32addr_prefix)
+                    || (self.use_32addr_default == Use32AddrFlags::Bits16 && self.use_32addr_prefix)
+                {
+                    if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                    {
+                        println!("stosd");
+                        self.mem_write32(
+                            bus,
+                            self.regs.segs[segment as usize].base
+                                + self.regs.read32(Reg32::EDI) as u64,
+                            self.regs.read32(Reg32::EAX),
+                        );
+                        if self.regs.getflag(Flags::Direction) == 0 {
+                            self.regs
+                                .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_add(4));
+                        } else {
+                            self.regs
+                                .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_sub(4));
+                        }
+                    } else {
+                        println!("stosw");
+                        self.mem_write16(
+                            bus,
+                            self.regs.segs[segment as usize].base
+                                + self.regs.read32(Reg32::EDI) as u64,
+                            self.regs.read16(Reg16::AX),
+                        );
+                        if self.regs.getflag(Flags::Direction) == 0 {
+                            self.regs
+                                .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_add(2));
+                        } else {
+                            self.regs
+                                .write32(Reg32::EDI, self.regs.read32(Reg32::EDI).wrapping_sub(2));
+                        }
+                    }
+                } else {
+                    if (self.use_32op_default == Use32OpFlags::Bits32 && !self.use_32op_prefix)
+                        || (self.use_32op_default == Use32OpFlags::Bits16 && self.use_32op_prefix)
+                    {
+                        println!("stosd");
+                        self.mem_write32(
+                            bus,
+                            self.regs.segs[segment as usize].base
+                                + self.regs.read16(Reg16::DI) as u64,
+                            self.regs.read32(Reg32::EAX),
+                        );
+                        if self.regs.getflag(Flags::Direction) == 0 {
+                            self.regs
+                                .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_add(4));
+                        } else {
+                            self.regs
+                                .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_sub(4));
+                        }
+                    } else {
+                        println!("stosw");
+                        self.mem_write16(
+                            bus,
+                            self.regs.segs[segment as usize].base
+                                + self.regs.read16(Reg16::DI) as u64,
+                            self.regs.read16(Reg16::AX),
+                        );
+                        if self.regs.getflag(Flags::Direction) == 0 {
+                            self.regs
+                                .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_add(2));
+                        } else {
+                            self.regs
+                                .write16(Reg16::DI, self.regs.read16(Reg16::DI).wrapping_sub(2));
+                        }
+                    }
+                }
+                if self.rep_status != None {
+                    self.regs
+                        .write32(Reg32::ECX, self.regs.read32(Reg32::ECX).wrapping_sub(1));
+                    if self.regs.read32(Reg32::ECX) != 0 {
+                        self.regs.rip = self.regs.rip.wrapping_sub(2);
+                        if self.use_32op_prefix {
+                            self.regs.rip = self.regs.rip.wrapping_sub(1);
+                        }
+                        if self.use_32addr_prefix {
+                            self.regs.rip = self.regs.rip.wrapping_sub(1);
+                        }
+                    }
+                }
             }
             0xb0 => {
                 let imm = self.mem_read8(
@@ -2356,11 +3162,44 @@ impl Cpu {
                 println!("out ax, {:x}", port);
                 self.io_write16(bus, port as u16, self.regs.read16(Reg16::AX));
             }
+            0xe8 => {
+                let offset = self.mem_read16(
+                    bus,
+                    self.regs.segs[SegReg::CS as usize].base + self.regs.rip,
+                );
+                self.regs.rip = self.regs.rip.wrapping_add(2);
+                self.push_16(bus, self.regs.rip as u16);
+                println!(
+                    "call near {:x}",
+                    (self.regs.rip as u16).wrapping_add(offset)
+                );
+                self.regs.rip = (self.regs.rip as u16).wrapping_add(offset) as u64;
+            }
             0xe9 => {
                 self.jump_near_16(bus);
             }
             0xea => {
                 self.jump_far_16(bus);
+            }
+            0xee => {
+                let port = self.regs.read16(Reg16::DX);
+                println!("out dx, al");
+                self.io_write8(bus, port, self.regs.read8(Reg8::AL));
+            }
+            0xef => {
+                let port = self.regs.read16(Reg16::DX);
+                println!("out dx, ax");
+                self.io_write16(bus, port, self.regs.read16(Reg16::AX));
+            }
+            0xf2 => {
+                self.rep_status = Some(RepStatus::Repne);
+                println!("REPNE:");
+                self.tick(bus);
+            }
+            0xf3 => {
+                self.rep_status = Some(RepStatus::Repe);
+                println!("REPE:");
+                self.tick(bus);
             }
             0xf5 => {
                 println!("cmc");
@@ -2420,6 +3259,15 @@ impl Cpu {
             0xfa => {
                 println!("cli");
                 self.regs.setflag(Flags::Interrupt, 0);
+            }
+            0xfb => {
+                println!("sti");
+                self.segment_override = None;
+                self.use_32op_prefix = false;
+                self.use_32addr_prefix = false;
+                self.rep_status = None;
+                self.tick(bus);
+                self.regs.setflag(Flags::Interrupt, 1);
             }
             0xfc => {
                 println!("cld");
@@ -2510,6 +3358,30 @@ impl Cpu {
                             self.regs.rip = rm as u64;
                         }
                     }
+                    0x30 => {
+                        let opcode_params = self.get_opcode_params_from_modrm(bus, modrm);
+                        if let Operand::Register(rm) = opcode_params.rm {
+                            println!(
+                                "push {}",
+                                Into::<&'static str>::into(<u8 as Into<Reg16>>::into(rm)),
+                            );
+                            self.push_16(bus, self.regs.read16(rm.into()));
+                        } else if let Operand::Address(segment, ea) = opcode_params.rm {
+                            println!(
+                                "push {}:{}",
+                                Into::<&'static str>::into(segment),
+                                format_offset_for_disasm(
+                                    Cpu::get_addr_type_from_modrm16(modrm),
+                                    Cpu::get_disp_type_from_modrm(modrm),
+                                    self.modrm_disp
+                                )
+                            );
+                            let rm =
+                                self.mem_read16(bus, self.regs.segs[segment as usize].base + ea);
+                            self.push_16(bus, rm);
+                            
+                        }
+                    }
                     _ => todo!(),
                 }
             }
@@ -2520,6 +3392,7 @@ impl Cpu {
         self.segment_override = None;
         self.use_32op_prefix = false;
         self.use_32addr_prefix = false;
+        self.rep_status = None;
     }
 }
 

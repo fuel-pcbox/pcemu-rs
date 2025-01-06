@@ -374,23 +374,25 @@ pub fn format_offset_for_disasm(
             if disp_type == None {
                 Some("bp")
             } else {
-                disp_type_str
+                None
             }
         }
         Some(AddrType16::Bx) => Some("bx"),
         None => None,
     };
     if addr_type_str == None {
-        if disp_type_str == None {
-            panic!();
-        }
-
         format!("[{} {:x}]", disp_type_str.unwrap(), offset)
+    }
+    else if disp_type_str == None{
+        format!(
+            "[{}]",
+            addr_type_str.unwrap()
+        )
     } else {
         format!(
-            "[{}+{} {:x}]",
-            addr_type_str.unwrap(),
+            "[{} {}+{:x}]",
             disp_type_str.unwrap(),
+            addr_type_str.unwrap(),
             offset
         )
     }
